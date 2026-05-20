@@ -5,7 +5,7 @@ langchain-groq
 langchain-huggingface
 langchain-text-splitters
 langchain-core
-chromadb
+qdrant-client
 sentence-transformers
 pypdf
 python-dotenv

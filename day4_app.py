@@ -5,7 +5,7 @@ import tempfile
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_community.vectorstores import Qdrant
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -30,7 +30,7 @@ def build_vector_store(uploaded_file):
     
     # Embed and store
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    vector_store = Chroma.from_documents(chunks, embeddings)
+    vector_store = Qdrant.from_documents(chunks, embeddings, location=":memory:")
     
     return vector_store
 
