@@ -5,7 +5,7 @@ langchain-groq
 langchain-huggingface
 langchain-text-splitters
 langchain-core
-faiss-cpu==1.7.4
-sentence-transformers==2.7.0
+chromadb
+sentence-transformers
 pypdf
 python-dotenv
