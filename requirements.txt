@@ -1,6 +1,7 @@
 streamlit
-langchain
-langchain-community
+langchain==0.3.30
+langchain-community==0.3.31
+torchvision
 langchain-groq
 langchain-huggingface
 langchain-text-splitters
