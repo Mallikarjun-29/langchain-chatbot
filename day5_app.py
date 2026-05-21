@@ -4,45 +4,37 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
-from langchain.chains import create_history_aware_retriever, create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain.chains import ConversationalRetrievalChain
+from langchain.memory import ConversationBufferWindowMemory
+from langchain.prompts import PromptTemplate
 import tempfile
 import os
 from dotenv import load_dotenv
-
 load_dotenv()
 
-# ── LLM ──────────────────────────────────────────────────────
 llm = ChatGroq(
     model="llama-3.1-8b-instant",
-    api_key=st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
+    api_key = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
 )
 
-# ── Prompts ───────────────────────────────────────────────────
-contextualize_prompt = ChatPromptTemplate.from_messages([
-    ("system", """Given the chat history and the latest user question,
-reformulate the question as a standalone question.
-If no reformulation is needed, return it as is."""),
-    MessagesPlaceholder("chat_history"),
-    ("human", "{input}"),
-])
+prompt_template = """You are a helpful assistant.
+Answer the user's question using the context and chat history provided.
 
-answer_prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are a helpful assistant.
-Answer the user's question using the context below.
+Context: {context}
+Chat History: {chat_history}
+Question: {question}
 
 Rules:
-1. If your answer is based on the context, add [DOC] at the end.
-2. If you used your own knowledge, add [LLM] at the end.
+1. If your answer is based on the context above, add [DOC] at the end.
+2. If you used your own knowledge (context was irrelevant), add [LLM] at the end.
 
-Context: {context}"""),
-    MessagesPlaceholder("chat_history"),
-    ("human", "{input}"),
-])
+Helpful Answer:"""
 
-# ── Vector store builder ──────────────────────────────────────
+prompt = PromptTemplate(
+    input_variables=["context", "chat_history", "question"],
+    template=prompt_template
+)
+
 def build_vector_store(uploaded_file):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as f:
         f.write(uploaded_file.read())
@@ -61,25 +53,15 @@ def build_vector_store(uploaded_file):
     os.unlink(tmp_path)
     return vectorstore
 
-# ── Chain builder ─────────────────────────────────────────────
-def build_chain(vectorstore):
-    retriever = vectorstore.as_retriever()
-    history_aware_retriever = create_history_aware_retriever(
-        llm, retriever, contextualize_prompt
-    )
-    question_answer_chain = create_stuff_documents_chain(
-        llm, answer_prompt
-    )
-    return create_retrieval_chain(
-        history_aware_retriever, question_answer_chain
-    )
-
-# ── Session state init ────────────────────────────────────────
 def init_session_state():
     if "messages" not in st.session_state:
         st.session_state.messages = []
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
+    if "memory" not in st.session_state:
+        st.session_state.memory = ConversationBufferWindowMemory(
+            k=5,
+            memory_key="chat_history",
+            return_messages=True
+        )
     if "chain" not in st.session_state:
         st.session_state.chain = None
     if "vector_store" not in st.session_state:
@@ -87,7 +69,6 @@ def init_session_state():
 
 init_session_state()
 
-# ── Sidebar ───────────────────────────────────────────────────
 with st.sidebar:
     st.title("💬 Helpful Chatbot")
     st.markdown("---")
@@ -101,20 +82,28 @@ with st.sidebar:
         if st.session_state.vector_store is None:
             with st.spinner("Building knowledge base..."):
                 st.session_state.vector_store = build_vector_store(uploaded_file)
-                st.session_state.chain = build_chain(
-                    st.session_state.vector_store
-                )
             st.success("PDF loaded!")
+
+        if st.session_state.chain is None:
+            st.session_state.chain = ConversationalRetrievalChain.from_llm(
+                llm=llm,
+                retriever=st.session_state.vector_store.as_retriever(),
+                memory=st.session_state.memory,
+                combine_docs_chain_kwargs={"prompt": prompt}
+            )
 
     st.markdown("---")
     if st.button("🗑️ New Chat"):
         st.session_state.messages = []
-        st.session_state.chat_history = []
+        st.session_state.memory = ConversationBufferWindowMemory(
+            k=5,
+            memory_key="chat_history",
+            return_messages=True
+        )
         st.session_state.chain = None
         st.session_state.vector_store = None
         st.rerun()
 
-# ── Main UI ───────────────────────────────────────────────────
 st.title("💬 Helpful Chatbot")
 
 for message in st.session_state.messages:
@@ -131,22 +120,14 @@ if question := st.chat_input("Ask me anything..."):
 
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
+
             if st.session_state.chain:
-                response = st.session_state.chain.invoke({
-                    "input": question,
-                    "chat_history": st.session_state.chat_history
-                })
+                response = st.session_state.chain(
+                    {"question": question}
+                )
                 answer = response["answer"]
             else:
                 answer = llm.invoke(question).content + " [LLM]"
-
-            # Update chat history (keep last 5 turns = 10 messages)
-            st.session_state.chat_history.extend([
-                HumanMessage(content=question),
-                AIMessage(content=answer)
-            ])
-            if len(st.session_state.chat_history) > 10:
-                st.session_state.chat_history = st.session_state.chat_history[-10:]
 
         st.write(answer)
 
