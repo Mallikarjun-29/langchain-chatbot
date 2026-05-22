@@ -104,7 +104,7 @@ with st.sidebar:
         st.session_state.vector_store = None
         st.rerun()
 
-st.title("💬 Helpful Chatbot")
+st.title("💬 Chat With Memory AI")
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
