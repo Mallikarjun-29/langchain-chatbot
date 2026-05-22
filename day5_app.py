@@ -70,7 +70,7 @@ def init_session_state():
 init_session_state()
 
 with st.sidebar:
-    st.title("💬 Helpful Chatbot")
+    st.title("💬 PDF RAG Assistant")
     st.markdown("---")
 
     uploaded_file = st.file_uploader(
