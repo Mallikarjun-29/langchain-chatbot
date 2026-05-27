@@ -9,8 +9,6 @@ from langchain.memory import ConversationBufferWindowMemory
 from langchain.prompts import PromptTemplate
 import tempfile
 import os
-from dotenv import load_dotenv
-load_dotenv()
 
 llm = ChatGroq(
     model="llama-3.1-8b-instant",
