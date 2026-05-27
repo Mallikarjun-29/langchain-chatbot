@@ -4,7 +4,6 @@ from langchain.tools import tool
 from langchain import hub
 from langchain.memory import ConversationBufferWindowMemory
 from langchain_community.document_loaders import WebBaseLoader
-from langchain_groq import ChatGroq
 import re
 
 # ===== CONSTANTS =====
@@ -70,7 +69,7 @@ def init_session_state():
         "llm": None,
         "agent_executor": None,
         "react_prompt": None,
-        "last_groq_key": None,
+        "last_llm_key": None,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -84,10 +83,20 @@ st.title("📈 Financial Research Agent")
 with st.sidebar:
     st.header("⚙️ Settings")
 
-    groq_api_key = st.text_input(
-        "Groq API Key:",
+    provider = st.selectbox(
+        "Choose AI Provider:",
+        ["Groq (Free)", "Mistral", "OpenAI", "Anthropic"]
+    )
+
+    api_key = st.text_input(
+        f"Enter {provider} API Key:",
         type="password",
-        help="Free at https://console.groq.com/keys"
+        help={
+            "Groq (Free)": "Free at https://console.groq.com/keys",
+            "Mistral": "Get at https://console.mistral.ai/",
+            "OpenAI": "Get at https://platform.openai.com/api-keys",
+            "Anthropic": "Get at https://console.anthropic.com/",
+        }[provider]
     )
 
     st.divider()
@@ -113,17 +122,42 @@ with st.sidebar:
         st.toast("🧹 Article memory cleared!", icon="✅")
         st.rerun()
 
-# ===== GROQ KEY CHECK =====
-if not groq_api_key:
-    st.warning("👈 Please enter your Groq API key to start! Free at https://console.groq.com/keys")
+# ===== API KEY CHECK =====
+if not api_key:
+    st.warning(f"👈 Please enter your {provider} API key to start!")
     st.stop()
 
-# ===== LLM + AGENT SETUP (cached, only rebuilds when key changes) =====
-if st.session_state.last_groq_key != groq_api_key:
-    st.session_state.llm = ChatGroq(
-        model="llama-3.3-70b-versatile",
-        api_key=groq_api_key
-    )
+# ===== LLM + AGENT SETUP (cached, only rebuilds when key/provider changes) =====
+llm_key = f"{provider}:{api_key}"
+
+if st.session_state.last_llm_key != llm_key:
+
+    # Initialize correct LLM based on provider
+    if provider == "Groq (Free)":
+        from langchain_groq import ChatGroq
+        st.session_state.llm = ChatGroq(
+            model="llama-3.3-70b-versatile",
+            api_key=api_key
+        )
+    elif provider == "Mistral":
+        from langchain_mistralai import ChatMistralAI
+        st.session_state.llm = ChatMistralAI(
+            model="mistral-small-latest",
+            api_key=api_key
+        )
+    elif provider == "OpenAI":
+        from langchain_openai import ChatOpenAI
+        st.session_state.llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            api_key=api_key
+        )
+    elif provider == "Anthropic":
+        from langchain_anthropic import ChatAnthropic
+        st.session_state.llm = ChatAnthropic(
+            model="claude-sonnet-4-5",
+            api_key=api_key
+        )
+
     if st.session_state.react_prompt is None:
         st.session_state.react_prompt = hub.pull("hwchase17/react")
 
@@ -192,7 +226,7 @@ if st.session_state.last_groq_key != groq_api_key:
         handle_parsing_errors=True,
         max_iterations=15
     )
-    st.session_state.last_groq_key = groq_api_key
+    st.session_state.last_llm_key = llm_key
 
 # ===== CHAT UI =====
 if st.session_state.current_article_title:
